@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IG Cleaner Web Vercel</title>
+  <style>
+    body { font-family: monospace; background: #0f0f0f; color: #fff; padding: 15px; max-width: 500px; margin: auto; }
+    h2 { color: #e1306c; text-align: center; margin-bottom: 15px; }
+    .card { background: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 15px; }
+    label { font-size: 11px; color: #aaa; display: block; margin-top: 8px; }
+    
+    .cookie-box { display: flex; gap: 6px; margin-top: 4px; }
+    input { flex: 1; padding: 8px; background: #222; border: 1px solid #444; color: #fff; border-radius: 4px; box-sizing: border-box; font-size: 11px; }
+    .btn-check { background: #007bff; color: #fff; border: none; padding: 8px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px; }
+    
+    #cookieStatus { margin-top: 8px; font-size: 11px; padding: 6px 10px; border-radius: 4px; display: none; font-weight: bold; }
+    .status-success { background: rgba(40, 167, 69, 0.2); border: 1px solid #28a745; color: #2ecc71; }
+    .status-error { background: rgba(220, 53, 69, 0.2); border: 1px solid #dc3545; color: #ff4d4d; }
+    .status-loading { background: rgba(255, 193, 7, 0.2); border: 1px solid #ffc107; color: #f1c40f; }
+
+    .btn-group { display: flex; gap: 8px; margin-top: 12px; }
+    button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: #fff; }
+    #removeBtn { background: #e1306c; }
+    #unfollBtn { background: #28a745; }
+    #pauseBtn { background: #e67e22; }
+    #stopBtn { background: #dc3545; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    
+    #logContainer { background: #000; padding: 10px; border-radius: 8px; border: 1px solid #333; height: 260px; overflow-y: auto; font-size: 11px; margin-top: 12px; }
+    p { margin: 3px 0; line-height: 1.3; }
+  </style>
+</head>
+<body>
+
+  <h2>🤖 IG CLEANER WEB</h2>
+
+  <div class="card">
+    <label>Cookie String Instagram (ds_user_id=...; sessionid=...; csrftoken=...)</label>
+    <div class="cookie-box">
+      <input type="text" id="cookieInput" placeholder="Paste cookie instagram kamu di sini">
+      <button class="btn-check" onclick="verifyCookie()">Cek Cookie</button>
+    </div>
+    
+    <div id="cookieStatus"></div>
+
+    <div class="btn-group">
+      <button id="removeBtn" onclick="startCleaner('REMOVE_FOLLOWERS')" disabled>Hapus Followers</button>
+      <button id="unfollBtn" onclick="startCleaner('UNFOLLOW_NON_MUTUAL')" disabled>Unfollow Following</button>
+    </div>
+    
+    <div class="btn-group">
+      <button id="pauseBtn" onclick="togglePause()" disabled>Pause</button>
+      <button id="stopBtn" onclick="stopProcess()" disabled>Stop</button>
+    </div>
+  </div>
+
+  <div id="logContainer"></div>
+
+  <script>
+    let isPaused = false;
+    let isStopped = false;
+    let isCookieValid = false;
+
+    function printLog(text, color = '#fff') {
+      const logBox = document.getElementById('logContainer');
+      const p = document.createElement('p');
+      p.style.color = color;
+      p.innerText = `[${new Date().toLocaleTimeString()}] ${text}`;
+      logBox.appendChild(p);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function setStatus(text, type) {
+      const statusBox = document.getElementById('cookieStatus');
+      statusBox.className = `status-${type}`;
+      statusBox.style.display = 'block';
+      statusBox.innerText = text;
+    }
+
+    async function proxyFetch(targetUrl, method = 'GET', payload = null) {
+      const rawCookie = document.getElementById('cookieInput').value.trim();
+      const csrfToken = rawCookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+      const res = await fetch('/api/proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Cookie': rawCookie
+        },
+        body: JSON.stringify({ targetUrl, method, payload })
+      });
+
+      return res;
+    }
+
+    async function verifyCookie() {
+      const rawCookie = document.getElementById('cookieInput').value.trim();
+      const userId = rawCookie.match(/ds_user_id=([^;]+)/)?.[1];
+      const csrfToken = rawCookie.match(/csrftoken=([^;]+)/)?.[1];
+
+      if (!rawCookie) {
+        setStatus("❌ Masukkan string cookie terlebih dahulu!", "error");
+        return false;
+      }
+
+      if (!userId || !csrfToken) {
+        setStatus("❌ Cookie tidak valid! (Missing ds_user_id / csrftoken)", "error");
+        return false;
+      }
+
+      setStatus("⏳ Menguji koneksi cookie ke Instagram...", "loading");
+
+      try {
+        const testUrl = `https://www.instagram.com/api/v1/friendships/${userId}/following/?count=1`;
+        const res = await proxyFetch(testUrl);
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'ok') {
+            setStatus(`✅ Cookie Valid! ID User: ${userId}`, "success");
+            isCookieValid = true;
+            document.getElementById('removeBtn').disabled = false;
+            document.getElementById('unfollBtn').disabled = false;
+            printLog(`[SYSTEM] Cookie terverifikasi untuk User ID: ${userId}`, "#00ff00");
+            return true;
+          }
+        }
+        
+        setStatus(`❌ Cookie Kadaluarsa / Akses Ditolak (HTTP ${res.status})`, "error");
+        isCookieValid = false;
+        return false;
+
+      } catch (err) {
+        setStatus(`❌ Gagal terhubung ke proxy: ${err.message}`, "error");
+        isCookieValid = false;
+        return false;
+      }
+    }
+
+    function togglePause() {
+      isPaused = !isPaused;
+      const btn = document.getElementById('pauseBtn');
+      btn.innerText = isPaused ? "Resume" : "Pause";
+      btn.style.background = isPaused ? "#2ecc71" : "#e67e22";
+      printLog(isPaused ? "[KONTROL] Dijeda." : "[KONTROL] Melanjutkan...", "#f1c40f");
+    }
+
+    function stopProcess() {
+      isStopped = true;
+      printLog("[KONTROL] Proses dihentikan.", "#dc3545");
+    }
+
+    async function checkControlState() {
+      while (isPaused && !isStopped) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    async function startCleaner(mode) {
+      if (!isCookieValid) {
+        alert("Silakan tekan 'Cek Cookie' dan pastikan cookie valid terlebih dahulu!");
+        return;
+      }
+
+      const rawCookie = document.getElementById('cookieInput').value.trim();
+      const userId = rawCookie.match(/ds_user_id=([^;]+)/)?.[1];
+
+      isStopped = false;
+      isPaused = false;
+      document.getElementById('pauseBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = false;
+
+      printLog("[SYSTEM] Memulai proses pembersihan...", "#00ff00");
+
+      async function fetchList(type) {
+        let list = [];
+        let maxId = '';
+        printLog(`[SCAN] Membaca data ${type}...`, "#ffcc00");
+
+        while (!isStopped) {
+          await checkControlState();
+          const url = `https://www.instagram.com/api/v1/friendships/${userId}/${type}/?count=100${maxId ? `&max_id=${maxId}` : ''}`;
+          
+          try {
+            const res = await proxyFetch(url);
+            if (!res.ok) {
+              printLog(`[LIMIT] Batasan server (${res.status}). Tunggu 30s...`, "#ffaa00");
+              await new Promise(r => setTimeout(r, 30000));
+              continue;
+            }
+
+            const data = await res.json();
+            if (data.users) list = list.concat(data.users.map(u => ({ id: u.pk, username: u.username })));
+            
+            maxId = data.next_max_id;
+            if (!maxId) break;
+            await new Promise(r => setTimeout(r, 1000));
+          } catch (e) {
+            printLog(`[ERROR SCAN] ${e.message}`, "#dc3545");
+            await new Promise(r => setTimeout(r, 5000));
+          }
+        }
+        return list;
+      }
+
+      const following = await fetchList('following');
+      if (isStopped) return;
+
+      const followers = await fetchList('followers');
+      if (isStopped) return;
+
+      let targets = [];
+      let endpointUrl = '';
+
+      if (mode === 'REMOVE_FOLLOWERS') {
+        const followingIds = new Set(following.map(f => f.id));
+        targets = followers.filter(f => !followingIds.has(f.id));
+        endpointUrl = (id) => `https://www.instagram.com/api/v1/friendships/remove_follower/${id}/`;
+      } else {
+        const followerIds = new Set(followers.map(f => f.id));
+        targets = following.filter(f => !followerIds.has(f.id));
+        endpointUrl = (id) => `https://www.instagram.com/api/v1/web/friendships/${id}/unfollow/`;
+      }
+
+      printLog(`[HASIL] Target non-mutual: ${targets.length}`, "#ffcc00");
+      if (targets.length === 0) return printLog("[SELESAI] Akun bersih!", "#00ff00");
+
+      for (let i = 0; i < targets.length; i++) {
+        await checkControlState();
+        if (isStopped) break;
+
+        const target = targets[i];
+
+        try {
+          const res = await proxyFetch(endpointUrl(target.id), 'POST', 'container_module=profile');
+          const data = await res.json();
+
+          if (res.ok && data.status === 'ok') {
+            printLog(`[${i + 1}/${targets.length}] Sukses: @${target.username}`, "#00ff00");
+          } else {
+            printLog(`[GAGAL] @${target.username} (${res.status})`, "#dc3545");
+          }
+        } catch (e) {
+          printLog(`[ERROR] ${e.message}`, "#dc3545");
+        }
+
+        if ((i + 1) % 10 === 0 && i !== targets.length - 1) {
+          const wait = Math.floor(Math.random() * 15000) + 60000;
+          printLog(`Batch 10 selesai. Cooldown ${Math.round(wait/1000)}s...`, "#f1c40f");
+          await new Promise(r => setTimeout(r, wait));
+        } else if (i !== targets.length - 1) {
+          const itemWait = Math.floor(Math.random() * 2000) + 3000;
+          await new Promise(r => setTimeout(r, itemWait));
+        }
+      }
+
+      printLog("[SELESAI] Seluruh proses selesai!", "#00ff00");
+    }
+  </script>
+</body>
+</html>
