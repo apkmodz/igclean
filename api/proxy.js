@@ -13,11 +13,19 @@ export default async function handler(req, res) {
     const cookie = req.headers['x-cookie'] || '';
 
     const headers = {
+      'Cookie': cookie,
       'X-CSRFToken': csrfToken,
       'X-Requested-With': 'XMLHttpRequest',
       'X-IG-App-ID': '936619743392459',
-      'Cookie': cookie,
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      'X-IG-WWW-Claim': '0',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Referer': 'https://www.instagram.com/',
+      'Origin': 'https://www.instagram.com',
+      'Accept': '*/*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin'
     };
 
     const fetchOptions = {
